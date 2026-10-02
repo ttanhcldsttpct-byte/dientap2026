@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lịch làm việc - Trung tâm Khuyến nông và Dịch vụ nông nghiệp thành phố Cần Thơ</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f6efe6;font-family:system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;color:#222}
+.wrap{max-width:1000px;margin:0 auto;padding:12px}
+.title{background:#fff7ec;border-radius:12px;box-shadow:0 3px 10px rgba(0,0,0,.1);text-align:center;padding:14px 10px}
+h1{color:#c62828;font-size:clamp(28px,7vw,48px);margin:0;font-weight:800;letter-spacing:.02em}
+.title p{margin:4px 0 0;color:#2e7d32;font-weight:700;text-transform:uppercase;font-size:clamp(13px,3vw,20px);line-height:1.35}
+.week{display:flex;gap:8px;align-items:center;justify-content:center;margin:14px 0;flex-wrap:wrap}
+button{border:0;background:#2e7d32;color:#fff;border-radius:8px;padding:9px 14px;font-weight:600;font-size:14px;cursor:pointer}
+button.red{background:#c62828}
+#wk{font-weight:700;color:#c62828;min-width:230px;text-align:center}
+.cards{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+@media(min-width:700px){.cards{grid-template-columns:repeat(4,1fr)}}
+.card{background:#fff;border-radius:14px;box-shadow:0 4px 14px rgba(0,0,0,.1);padding:14px 8px;text-align:center;cursor:pointer;border:2px solid transparent}
+.card.on{border-color:#c62828;background:#fffaf5}
+.card svg{width:52px;height:52px}
+.card h3{color:#2e7d32;font-size:15px;text-transform:uppercase;margin:8px 0}
+.card small{color:#444;font-size:14px}
+.cards.two .card{padding:26px 8px}
+.cards.two .card svg{width:64px;height:64px}
+.cards.two .card h3{font-size:clamp(15px,3.6vw,22px)}
+.bar{margin:12px 0 0}
+.sched{margin-top:16px;background:#fff;border-radius:14px;box-shadow:0 4px 14px rgba(0,0,0,.1);padding:12px}
+.sched h2{color:#c62828;margin:0 0 4px;font-size:clamp(18px,4.5vw,26px);text-transform:uppercase}
+.hint{color:#666;font-size:13px;margin:0 0 10px}
+.tw{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th{background:#2e7d32;color:#fff;padding:8px;font-size:14px}
+td{border:1px solid #d9d9d9;padding:8px;font-size:14px;vertical-align:top;height:40px;white-space:pre-line}
+td.day{background:#fff1f0;font-weight:700;color:#c62828;text-align:center;width:92px}
+td.bs{width:64px;text-align:center;font-weight:600;color:#2e7d32}
+td[contenteditable]:focus{outline:2px solid #c62828;background:#fffbe6}
+@media print{.week,.cards,.hint,.bar,button{display:none}body{background:#fff}.sched{box-shadow:none}}
+.note{color:#666;font-size:13px;margin:0 0 10px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="title"><h1>LỊCH LÀM VIỆC</h1><p>Trung tâm Khuyến nông và Dịch vụ nông nghiệp thành phố Cần Thơ</p></header>
+  <div class="bar"><button id="back">◀ Quay lại</button></div>
+  <div class="week" id="weekbar">
+    <button id="prev">◀ Tuần trước</button>
+    <div id="wk"></div>
+    <button id="next">Tuần sau ▶</button>
+    <button id="today" class="red">Tuần này</button>
+    <button id="reload">Làm mới</button>
+    <button id="print">In lịch</button>
+  </div>
+  <div class="cards" id="cards"></div>
+  <section class="sched" id="sec">
+    <h2 id="uname"></h2>
+    <p class="note" id="note"></p>
+    <div class="tw"><table id="tb"></table></div>
+  </section>
+</div>
+<script>
+(function(){
+  /* DÁN LINK GOOGLE SHEETS (định dạng CSV) VÀO GIỮA HAI DẤU NGOẶC KÉP BÊN DƯỚI */
+  var SHEET_URL="";
+
+  var U=[{n:"Ban Giám đốc"},{n:"Phòng Tổ chức - Hành chính"},{n:"Phòng Khuyến nông"},{n:"Phòng Dịch vụ"},{n:"Phòng QLKTCTTL"},{n:"Trại 1"},{n:"Trại 2"},{n:"Trại 3"}];
+  var DAYS=["Thứ Hai","Thứ Ba","Thứ Tư","Thứ Năm","Thứ Sáu","Thứ Bảy"];
+  var ICON='<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="22" fill="#c62828"/><polygon points="24,9 28.5,19.5 40,20.5 31.3,28 34,39 24,33 14,39 16.7,28 8,20.5 19.5,19.5" fill="#ffd400"/></svg>';
+  var base=new Date();base.setHours(0,0,0,0);
+  var off=0,view="home",cur=0,rows=[],note="";
+  function p(n){return String(n).padStart(2,"0")}
+  function fmt(d){return p(d.getDate())+"/"+p(d.getMonth()+1)+"/"+d.getFullYear()}
+  function key(d){return d.getFullYear()+"-"+p(d.getMonth()+1)+"-"+p(d.getDate())}
+  function add(d,n){var x=new Date(d);x.setDate(x.getDate()+n);return x}
+  function monday(o){var d=new Date(base);d.setDate(d.getDate()-((d.getDay()+6)%7)+(o||0)*7);return d}
+  function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")}
+  function norm(s){return String(s||"").trim().toLowerCase().replace(/\s+/g," ")}
+  function dkey(s){
+    s=String(s||"").trim();
+    var m=s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})/);
+    if(m)return m[3]+"-"+p(m[2])+"-"+p(m[1]);
+    m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+    return m?m[1]+"-"+p(m[2])+"-"+p(m[3]):"";
+  }
+  function parseCSV(t){
+    var out=[],r=[],f="",q=false,i,c;
+    for(i=0;i<t.length;i++){
+      c=t[i];
+      if(q){if(c==='"'){if(t[i+1]==='"'){f+='"';i++}else q=false}else f+=c}
+      else if(c==='"')q=true;
+      else if(c===','){r.push(f);f=""}
+      else if(c==='\n'){r.push(f);out.push(r);r=[];f=""}
+      else if(c!=='\r')f+=c;
+    }
+    if(f!==""||r.length){r.push(f);out.push(r)}
+    return out;
+  }
+  function toRows(a){
+    return a.slice(1).map(function(x){
+      return {u:norm(x[0]),d:dkey(x[1]),s:norm(x[2]).indexOf("chi")===0?1:0,n:x[3]||"",c:x[4]||"",l:x[5]||""};
+    }).filter(function(x){return x.u&&x.d});
+  }
+  function demo(){
+    var m=monday(0);
+    return [
+      ["Ban Giám đốc",0,0,"Giao ban đầu tuần","Giám đốc","Phòng họp số 1"],
+      ["Ban Giám đốc",2,1,"Làm việc với các phòng, trại","Phó Giám đốc","Trung tâm"],
+      ["Phòng Khuyến nông",1,0,"Tập huấn kỹ thuật cho nông dân","Trưởng phòng","Xã/phường (ví dụ)"],
+      ["Trại 1",3,0,"Kiểm tra công tác chăm sóc","Trưởng trại","Trại 1"]
+    ].map(function(a){return {u:norm(a[0]),d:key(add(m,a[1])),s:a[2],n:a[3],c:a[4],l:a[5]}});
+  }
+  function load(){
+    if(!SHEET_URL){rows=demo();note="Đang hiển thị dữ liệu mẫu (chưa gắn Google Sheets).";render();return}
+    note="Đang tải dữ liệu...";render();
+    fetch(SHEET_URL+(SHEET_URL.indexOf("?")>-1?"&":"?")+"t="+Date.now())
+      .then(function(r){if(!r.ok)throw new Error("http");return r.text()})
+      .then(function(t){var d=new Date();rows=toRows(parseCSV(t));note="Cập nhật lúc "+p(d.getHours())+":"+p(d.getMinutes())+" ngày "+fmt(d);render()})
+      .catch(function(){note="Không tải được dữ liệu. Kiểm tra lại link Google Sheets hoặc kết nối mạng.";render()});
+  }
+  function render(){
+    var home=view==="home",units=view==="units",sc=view==="sched",cards=document.getElementById("cards");
+    document.getElementById("back").style.display=home?"none":"inline-block";
+    document.getElementById("weekbar").style.display=sc?"flex":"none";
+    document.getElementById("sec").style.display=sc?"block":"none";
+    cards.style.display=sc?"none":"grid";
+    if(home){
+      cards.className="cards two";
+      cards.innerHTML='<div class="card" data-go="0">'+ICON+'<h3>Ban Giám đốc</h3></div><div class="card" data-go="units">'+ICON+'<h3>Các phòng, trại</h3><small>Tổng số đơn vị: <b>'+(U.length-1)+'</b></small></div>';
+    }else if(units){
+      cards.className="cards";
+      cards.innerHTML=U.map(function(u,i){return i?'<div class="card" data-go="'+i+'">'+ICON+'<h3>'+u.n+'</h3></div>':""}).join("");
+    }else{
+      var mon=monday(off);
+      document.getElementById("wk").textContent="Tuần từ "+fmt(mon)+" đến "+fmt(add(mon,5));
+      document.getElementById("uname").textContent="Lịch làm việc - "+U[cur].n;
+      document.getElementById("note").textContent=note;
+      var h='<tr><th>Thứ / Ngày</th><th>Buổi</th><th>Nội dung công việc</th><th>Lãnh đạo chủ trì</th><th>Địa điểm</th></tr>',un=norm(U[cur].n);
+      for(var d=0;d<6;d++){
+        var dk=key(add(mon,d)),first=true;
+        var sess=[0,1].map(function(s){return rows.filter(function(x){return x.u===un&&x.d===dk&&x.s===s})});
+        var total=sess.reduce(function(a,l){return a+Math.max(1,l.length)},0);
+        sess.forEach(function(l,s){
+          if(!l.length)l=[null];
+          l.forEach(function(x,i){
+            h+='<tr>'+(first?'<td class="day" rowspan="'+total+'">'+DAYS[d]+'<br>'+fmt(add(mon,d)).slice(0,5)+'</td>':'')
+              +(i===0?'<td class="bs" rowspan="'+l.length+'">'+(s?'Chiều':'Sáng')+'</td>':'')
+              +'<td>'+(x?esc(x.n):'')+'</td><td>'+(x?esc(x.c):'')+'</td><td>'+(x?esc(x.l):'')+'</td></tr>';
+            first=false;
+          });
+        });
+      }
+      document.getElementById("tb").innerHTML=h;
+    }
+    window.scrollTo(0,0);
+  }
+  document.getElementById("cards").addEventListener("click",function(e){
+    var c=e.target.closest(".card");if(!c)return;
+    var g=c.dataset.go;
+    if(g==="units")view="units";else{cur=+g;view="sched"}
+    render();
+  });
+  document.getElementById("back").onclick=function(){view=(view==="sched"&&cur>0)?"units":"home";render()};
+  document.getElementById("prev").onclick=function(){off--;render()};
+  document.getElementById("next").onclick=function(){off++;render()};
+  document.getElementById("today").onclick=function(){off=0;render()};
+  document.getElementById("reload").onclick=load;
+  document.getElementById("print").onclick=function(){window.print()};
+  load();
+  if(SHEET_URL)setInterval(load,300000);
+})();
+</script>
+</body>
+</html>
